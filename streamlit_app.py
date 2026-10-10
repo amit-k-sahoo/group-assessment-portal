@@ -24,12 +24,40 @@ def login_screen():
     st.title("Group Assessment Portal")
     st.write("Sign in with your Google account to assess Groups 1–10 on ideation, features, "
              "look and feel, governance and presentation.")
+    problems = auth_config_problems()
+    if problems:
+        st.error("Sign-in isn't configured correctly yet. Fix these in the app's Secrets:\n\n"
+                 + "\n".join(f"- {p}" for p in problems))
+        return
     if st.button("Sign in with Google", type="primary", icon=":material/login:"):
         try:
             named = "google" in st.secrets["auth"]
         except Exception:
             named = False
         st.login("google") if named else st.login()
+
+
+def auth_config_problems() -> list:
+    """Names (never values) of missing or placeholder auth secrets."""
+    try:
+        auth = dict(st.secrets["auth"])
+    except Exception:
+        return ["There is no [auth] section."]
+    if isinstance(auth.get("google"), dict) or hasattr(auth.get("google"), "get"):
+        auth = dict(auth["google"]) | {k: v for k, v in auth.items() if k != "google"}
+    out = []
+    for key in ("redirect_uri", "cookie_secret", "client_id", "client_secret", "server_metadata_url"):
+        val = str(auth.get(key, "")).strip()
+        if not val:
+            out.append(f"`{key}` is missing")
+        elif val.lower().startswith("xxxx") or "your-app" in val or "<" in val:
+            out.append(f"`{key}` is still a placeholder")
+    uri = str(auth.get("redirect_uri", ""))
+    if uri and not uri.endswith("/oauth2callback"):
+        out.append("`redirect_uri` must end with `/oauth2callback`")
+    if uri.endswith("/"):
+        out.append("`redirect_uri` must not end with a slash")
+    return out
 
 
 def rate_tab(email: str, name: str):
