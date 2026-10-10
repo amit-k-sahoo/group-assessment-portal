@@ -1,5 +1,7 @@
 """Group assessment portal — sign in with a Login ID/password (or Google, if configured), rate Groups 1–10 on five parameters (1–5)."""
 
+import hmac
+
 import pandas as pd
 import streamlit as st
 
@@ -20,17 +22,14 @@ def admin_settings():
     return (login_id, password) if login_id and len(password) >= db.MIN_PASSWORD else None
 
 
-@st.cache_resource
-def _seed_admin(login_id: str, password: str):
-    db.ensure_admin(login_id, "Portal Admin", password)
-    return True
-
-
-def seed_admin():
-    if cfg := admin_settings():
-        if not db.user_exists(cfg[0]):  # database was reset (e.g. app restarted)
-            _seed_admin.clear()
-        _seed_admin(*cfg)
+def admin_login(login_id: str, password: str):
+    """Check the admin credentials straight against the secrets (no database involved)."""
+    cfg = admin_settings()
+    if not cfg:
+        return None
+    id_ok = hmac.compare_digest(login_id.strip().lower().encode(), cfg[0].strip().lower().encode())
+    pw_ok = hmac.compare_digest(password.strip().encode(), cfg[1].strip().encode())
+    return {"id": cfg[0].strip().lower(), "name": "Portal Admin", "admin": True} if id_ok and pw_ok else None
 
 
 def login_screen():
@@ -43,7 +42,10 @@ def login_screen():
             password = st.text_input("Password", type="password", autocomplete="current-password")
             if st.form_submit_button("Sign in", type="primary", width="stretch"):
                 try:
-                    st.session_state["user"] = db.authenticate(login_id, password)
+                    if admin := admin_login(login_id, password):
+                        st.session_state["user"] = admin
+                    else:
+                        st.session_state["user"] = db.authenticate(login_id, password)
                 except db.AuthError as exc:
                     st.error(str(exc))
                 else:
@@ -60,6 +62,8 @@ def login_screen():
             if st.form_submit_button("Create account", type="primary", width="stretch"):
                 if pw1 != pw2:
                     st.error("Passwords don't match.")
+                elif (cfg := admin_settings()) and login_id.strip().lower() == cfg[0].strip().lower():
+                    st.error("That Login ID is already taken.")
                 else:
                     try:
                         st.session_state["user"] = db.create_user(login_id, full_name, pw1)
@@ -192,7 +196,6 @@ def results_tab(is_admin: bool):
 
 
 def main():
-    seed_admin()
     who = current_user()
     if who is None:
         login_screen()
@@ -203,7 +206,7 @@ def main():
         st.caption(email)
         st.button("Sign out", on_click=sign_out, args=(google,))
 
-    is_admin = (not google) and db.is_admin(email)  # role is re-read from the database every run
+    is_admin = bool(st.session_state.get("user", {}).get("admin"))  # set only by admin_login()
     st.title("Group Assessment Portal" + (" — Admin" if is_admin else ""))
     if is_admin:
         results_tab(True)
