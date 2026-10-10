@@ -25,7 +25,11 @@ def login_screen():
     st.write("Sign in with your Google account to assess Groups 1–10 on ideation, features, "
              "look and feel, governance and presentation.")
     if st.button("Sign in with Google", type="primary", icon=":material/login:"):
-        st.login("google")
+        try:
+            named = "google" in st.secrets["auth"]
+        except Exception:
+            named = False
+        st.login("google") if named else st.login()
 
 
 def rate_tab(email: str, name: str):
