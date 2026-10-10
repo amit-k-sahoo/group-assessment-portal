@@ -1,6 +1,6 @@
 # Group Assessment Portal
 
-Sign in with Google, rate Groups 1–10 on Ideation, Features, Look and feel, Governance and
+Create an account (full name, Login ID, password) or use Google if configured, then rate Groups 1–10 on Ideation, Features, Look and feel, Governance and
 Presentation (1–5 each), and see the combined results.
 
 Run locally: `pip install -r requirements.txt`, copy `.streamlit/secrets.toml.example` to
