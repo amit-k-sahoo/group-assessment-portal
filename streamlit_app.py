@@ -5,6 +5,7 @@ import hmac
 import pandas as pd
 import streamlit as st
 
+import admin_config
 import db
 
 st.set_page_config(page_title="Group Assessment Portal", page_icon="⭐", layout="centered")
@@ -23,13 +24,23 @@ def admin_settings():
 
 
 def admin_login(login_id: str, password: str):
-    """Check the admin credentials straight against the secrets (no database involved)."""
+    """Check admin credentials: the [admin] secret if set, else the built-in hashed account."""
+    login_id = login_id.strip().lower()
     cfg = admin_settings()
-    if not cfg:
-        return None
-    id_ok = hmac.compare_digest(login_id.strip().lower().encode(), cfg[0].strip().lower().encode())
-    pw_ok = hmac.compare_digest(password.strip().encode(), cfg[1].strip().encode())
-    return {"id": cfg[0].strip().lower(), "name": "Portal Admin", "admin": True} if id_ok and pw_ok else None
+    if cfg:
+        ok = hmac.compare_digest(login_id.encode(), cfg[0].strip().lower().encode()) and \
+             hmac.compare_digest(password.strip().encode(), cfg[1].strip().encode())
+        admin_id = cfg[0].strip().lower()
+    else:
+        ok = hmac.compare_digest(login_id.encode(), admin_config.LOGIN_ID.encode()) and \
+             admin_config.check(password)
+        admin_id = admin_config.LOGIN_ID
+    return {"id": admin_id, "name": "Portal Admin", "admin": True} if ok else None
+
+
+def admin_login_id() -> str:
+    cfg = admin_settings()
+    return (cfg[0] if cfg else admin_config.LOGIN_ID).strip().lower()
 
 
 def login_screen():
@@ -62,7 +73,7 @@ def login_screen():
             if st.form_submit_button("Create account", type="primary", width="stretch"):
                 if pw1 != pw2:
                     st.error("Passwords don't match.")
-                elif (cfg := admin_settings()) and login_id.strip().lower() == cfg[0].strip().lower():
+                elif login_id.strip().lower() == admin_login_id():
                     st.error("That Login ID is already taken.")
                 else:
                     try:
@@ -71,9 +82,6 @@ def login_screen():
                         st.error(str(exc))
                     else:
                         st.rerun()
-    if admin_settings() is None:
-        st.caption("⚠️ Admin account not set up: add an `[admin]` block (login_id, password of at least "
-                   f"{db.MIN_PASSWORD} characters) to the app's Secrets, then reboot.")
     if not auth_config_problems():  # Google sign-in is optional; shown only when configured
         st.divider()
         if st.button("Or sign in with Google", icon=":material/login:"):
@@ -160,6 +168,20 @@ def mine_tab(email: str):
     st.dataframe(pivot, width="stretch")
 
 
+def reviewers_tab():
+    rows = db.all_ratings()
+    if not rows:
+        st.info("No ratings yet.")
+        return
+    df = pd.DataFrame(rows, columns=["email", "name", "group", "parameter", "score", "updated"])
+    wide = df.pivot_table(index=["name", "email", "group"], columns="parameter", values="score") \
+             .reindex(columns=list(db.PARAMETERS)).rename(columns=db.PARAMETERS).reset_index()
+    wide["Average"] = wide[list(db.PARAMETERS.values())].mean(axis=1).round(2)
+    wide = wide.rename(columns={"name": "Reviewer", "email": "Login ID", "group": "Group"})
+    st.caption(f"{df['email'].nunique()} reviewers · {len(wide)} submissions")
+    st.dataframe(wide.sort_values(["Reviewer", "Group"]), hide_index=True, width="stretch")
+
+
 def results_tab(is_admin: bool):
     rows = db.all_ratings()
     if not rows:
@@ -209,7 +231,11 @@ def main():
     is_admin = bool(st.session_state.get("user", {}).get("admin"))  # set only by admin_login()
     st.title("Group Assessment Portal" + (" — Admin" if is_admin else ""))
     if is_admin:
-        results_tab(True)
+        overall, by_reviewer = st.tabs(["Overall results", "By reviewer"])
+        with overall:
+            results_tab(True)
+        with by_reviewer:
+            reviewers_tab()
         return
     tabs = st.tabs(["Rate a group", "My ratings"])
     with tabs[0]:
