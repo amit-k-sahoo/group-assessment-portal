@@ -67,6 +67,9 @@ def login_screen():
                         st.error(str(exc))
                     else:
                         st.rerun()
+    if admin_settings() is None:
+        st.caption("⚠️ Admin account not set up: add an `[admin]` block (login_id, password of at least "
+                   f"{db.MIN_PASSWORD} characters) to the app's Secrets, then reboot.")
     if not auth_config_problems():  # Google sign-in is optional; shown only when configured
         st.divider()
         if st.button("Or sign in with Google", icon=":material/login:"):
