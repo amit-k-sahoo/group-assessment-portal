@@ -7,6 +7,7 @@ import streamlit as st
 
 import admin_config
 import db
+import rubric
 
 st.set_page_config(page_title="Group Assessment Portal", page_icon="⭐", layout="centered")
 
@@ -242,6 +243,7 @@ def main():
         rate_tab(email, name)
     with tabs[1]:
         mine_tab(email)
+    rubric.render()
 
 
 main()
