@@ -9,3 +9,6 @@ Run locally: `pip install -r requirements.txt`, copy `.streamlit/secrets.toml.ex
 Deploy: share.streamlit.io → New app → this repo, `main`, `streamlit_app.py`; paste the secrets
 into Advanced settings → Secrets. Ratings are stored in SQLite (`data/ratings.db`), which is
 wiped when Streamlit Cloud restarts the app — export the CSV from the Results page first.
+
+Roles: reviewers rate groups and see only their own scores. A single admin account (set in the
+`[admin]` secret) sees the overall results and can export the CSV.

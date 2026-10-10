@@ -10,14 +10,27 @@ st.set_page_config(page_title="Group Assessment Portal", page_icon="⭐", layout
 LABELS = {1: "1 – Poor", 2: "2 – Fair", 3: "3 – Good", 4: "4 – Very good", 5: "5 – Excellent"}
 
 
-def admin_emails() -> set:
+def admin_settings():
+    """[admin] login_id / password from the app's secrets, or None."""
     try:
-        raw = st.secrets.get("admin_emails", [])
-    except Exception:  # no secrets file configured
-        raw = []
-    if isinstance(raw, str):
-        raw = raw.split(",")
-    return {e.strip().lower() for e in raw if e.strip()}
+        cfg = st.secrets["admin"]
+        login_id, password = str(cfg["login_id"]).strip(), str(cfg["password"])
+    except Exception:
+        return None
+    return (login_id, password) if login_id and len(password) >= db.MIN_PASSWORD else None
+
+
+@st.cache_resource
+def _seed_admin(login_id: str, password: str):
+    db.ensure_admin(login_id, "Portal Admin", password)
+    return True
+
+
+def seed_admin():
+    if cfg := admin_settings():
+        if not db.user_exists(cfg[0]):  # database was reset (e.g. app restarted)
+            _seed_admin.clear()
+        _seed_admin(*cfg)
 
 
 def login_screen():
@@ -176,6 +189,7 @@ def results_tab(is_admin: bool):
 
 
 def main():
+    seed_admin()
     who = current_user()
     if who is None:
         login_screen()
@@ -186,15 +200,16 @@ def main():
         st.caption(email)
         st.button("Sign out", on_click=sign_out, args=(google,))
 
-    st.title("Group Assessment Portal")
-    is_admin = email in admin_emails()
-    tabs = st.tabs(["Rate a group", "My ratings", "Results"])
+    is_admin = (not google) and db.is_admin(email)  # role is re-read from the database every run
+    st.title("Group Assessment Portal" + (" — Admin" if is_admin else ""))
+    if is_admin:
+        results_tab(True)
+        return
+    tabs = st.tabs(["Rate a group", "My ratings"])
     with tabs[0]:
         rate_tab(email, name)
     with tabs[1]:
         mine_tab(email)
-    with tabs[2]:
-        results_tab(is_admin)
 
 
 main()

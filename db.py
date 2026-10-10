@@ -47,6 +47,8 @@ def conn():
                    locked_until REAL NOT NULL DEFAULT 0,
                    created_at  TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP)"""
         )
+        if "role" not in {r[1] for r in c.execute("PRAGMA table_info(users)")}:
+            c.execute("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'reviewer'")
         yield c
         c.commit()
     finally:
@@ -153,3 +155,30 @@ def authenticate(login_id: str, password: str) -> dict:
              time.time() + LOCK_SECONDS if failed >= MAX_FAILS else 0, login_id),
         )
     raise generic
+
+
+# ---- admin ------------------------------------------------------------------------------
+def ensure_admin(login_id: str, full_name: str, password: str) -> None:
+    """Create or refresh the single admin account from the app's secrets. Safe to call repeatedly."""
+    login_id = login_id.strip().lower()
+    salt = secrets.token_bytes(16)
+    with conn() as c:
+        c.execute(
+            """INSERT INTO users (login_id, full_name, salt, pw_hash, iterations, role)
+               VALUES (?,?,?,?,?, 'admin')
+               ON CONFLICT(login_id) DO UPDATE SET full_name=excluded.full_name, salt=excluded.salt,
+                   pw_hash=excluded.pw_hash, iterations=excluded.iterations, role='admin',
+                   failed=0, locked_until=0""",
+            (login_id, full_name, salt.hex(), _hash(password, salt, ITERATIONS), ITERATIONS),
+        )
+
+
+def user_exists(login_id: str) -> bool:
+    with conn() as c:
+        return c.execute("SELECT 1 FROM users WHERE login_id=?", (login_id.strip().lower(),)).fetchone() is not None
+
+
+def is_admin(login_id: str) -> bool:
+    with conn() as c:
+        row = c.execute("SELECT role FROM users WHERE login_id=?", (login_id,)).fetchone()
+    return bool(row) and row[0] == "admin"

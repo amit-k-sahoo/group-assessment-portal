@@ -3,3 +3,6 @@ data/
 __pycache__/
 .venv/
 .DS_Store
+
+# Local only — never commit
+ADMIN_CREDENTIALS.txt
